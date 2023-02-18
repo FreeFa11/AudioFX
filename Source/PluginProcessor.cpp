@@ -95,6 +95,26 @@ void AudioFXAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
+
+    juce::dsp::ProcessSpec specs;
+    specs.sampleRate = sampleRate;
+    specs.maximumBlockSize = samplesPerBlock;
+    specs.numChannels = 1;
+
+    leftChain.prepare(specs);
+    rightChain.prepare(specs);
+
+    auto chainsettings = getChainSettings(apvts);
+
+    //updateDistortion(chainsettings);
+    updateLowCut(chainsettings);
+    updatePeak(chainsettings);
+    updateHighCut(chainsettings);
+    updateReverb(chainsettings);
+
+    
+
+
 }
 
 void AudioFXAudioProcessor::releaseResources()
@@ -144,18 +164,27 @@ void AudioFXAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    // This is the place where you'd normally do the guts of your plugin's
-    // audio processing...
-    // Make sure to reset the state if your inner loop is processing
-    // the samples and the outer loop is handling the channels.
-    // Alternatively, you can process the samples with the channels
-    // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
-    {
-        auto* channelData = buffer.getWritePointer (channel);
+    auto chainsettings = getChainSettings(apvts);
 
-        // ..do something to the data...
-    }
+    //updateDistortion(chainsettings);
+    updateLowCut(chainsettings);
+    updatePeak(chainsettings);
+    updateHighCut(chainsettings);
+    updateReverb(chainsettings);
+
+
+
+    juce::dsp::AudioBlock<float> block(buffer);
+
+    auto leftblock = block.getSingleChannelBlock(0);
+    auto rightblock = block.getSingleChannelBlock(1);
+
+    juce::dsp::ProcessContextReplacing<float> leftcontext(leftblock);
+    juce::dsp::ProcessContextReplacing<float> rightcontext(rightblock);
+
+    leftChain.process(leftcontext);
+    rightChain.process(leftcontext);
+
 }
 
 //==============================================================================
@@ -166,7 +195,9 @@ bool AudioFXAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* AudioFXAudioProcessor::createEditor()
 {
-    return new AudioFXAudioProcessorEditor (*this);
+    //return new AudioFXAudioProcessorEditor(*this);
+    return new juce::GenericAudioProcessorEditor(*this);
+
 }
 
 //==============================================================================
@@ -183,9 +214,115 @@ void AudioFXAudioProcessor::setStateInformation (const void* data, int sizeInByt
     // whose contents will have been created by the getStateInformation() call.
 }
 
+
+
 //==============================================================================
 // This creates new instances of the plugin..
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new AudioFXAudioProcessor();
 }
+
+
+//Functions have been defined here
+
+juce::AudioProcessorValueTreeState::ParameterLayout
+
+AudioFXAudioProcessor::createParameterLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+
+    //This is for Distortion
+    layout.add(std::make_unique<juce::AudioParameterFloat>("Gain", "Gain", juce::NormalisableRange<float>(0.0f, 30.f, 0.1f, 1.f), 0.0f));
+    //The arguments of AudioParameterFloat are ParameterID, ParameterName, NormalizeRangeObject and DefaultValuerespectively
+    //The arguments of NormalisableRange are MinValue, MaxValue, StepSize, Skew respectively
+
+    //This is for Filter
+    layout.add(std::make_unique<juce::AudioParameterFloat>("LowCutoff", "LowCutoff", juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f), 20.0f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>("HighCutoff", "HighCutoff", juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f), 20000.0f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>("PeakFreq", "PeakFreq", juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f), 2000.0f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>("PeakQuality", "PeakQuality", juce::NormalisableRange<float>(0.1f, 10.f, 0.05f, 1.f), 1.0f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>("PeakGain", "PeakGain", juce::NormalisableRange<float>(-20.f, 20.f, 0.5f, 1.f), 0.0f));
+
+    //This is for Reverb
+    layout.add(std::make_unique<juce::AudioParameterFloat>("RoomSize", "RoomSize", juce::NormalisableRange<float>(0.f, 1.f, 0.01f, 1.0f), 0.3f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>("Width", "Width", juce::NormalisableRange<float>(0.f, 1.f, 0.01f, 1.0f), 0.3f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>("Dry", "Dry", juce::NormalisableRange<float>(0.f, 1.f, 0.01f, 1.0f), 1.f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>("Wet", "Wet", juce::NormalisableRange<float>(0.f, 1.f, 0.01f, 1.0f), 1.f));
+
+    return layout;
+}
+
+
+ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts)
+{
+    ChainSettings tempsetting;
+    tempsetting.Gain = apvts.getRawParameterValue("Gain")->load();
+
+    tempsetting.LowCutoff = apvts.getRawParameterValue("LowCutoff")->load();
+    tempsetting.PeakFreq = apvts.getRawParameterValue("PeakFreq")->load();
+    tempsetting.HighCutoff = apvts.getRawParameterValue("HighCutoff")->load();
+    tempsetting.PeakGain = apvts.getRawParameterValue("PeakGain")->load();
+    tempsetting.PeakQuality = apvts.getRawParameterValue("PeakQuality")->load();
+
+    tempsetting.RoomSize = apvts.getRawParameterValue("RoomSize")->load();
+    tempsetting.Width = apvts.getRawParameterValue("Width")->load();
+    tempsetting.Wet = apvts.getRawParameterValue("Wet")->load();
+    tempsetting.Dry = apvts.getRawParameterValue("Dry")->load();
+
+
+    return tempsetting;
+}
+
+void AudioFXAudioProcessor::updateDistortion(const ChainSettings& settings)
+{
+    auto gain = settings.Gain;
+    auto lambda = [gain](float in) ->float
+    {
+        return std::tanh(gain * in);
+    };
+
+    //leftChain.get<chainPosition::Distorion>().functionToUse = lambda ;
+}
+
+void AudioFXAudioProcessor::updateLowCut(const ChainSettings& settings)
+{
+    auto coeffs = juce::dsp::IIR::Coefficients<float>::makeHighPass(getSampleRate(), settings.LowCutoff, 1);
+
+    *leftChain.get<chainPosition::LowCut>().coefficients = *coeffs;
+    *rightChain.get<chainPosition::LowCut>().coefficients = *coeffs;
+
+}
+void AudioFXAudioProcessor::updateHighCut(const ChainSettings& settings)
+{
+    auto coeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass(getSampleRate(), settings.HighCutoff, 1);
+
+    *leftChain.get<chainPosition::HighCut>().coefficients = *coeffs;
+    *rightChain.get<chainPosition::HighCut>().coefficients = *coeffs;
+
+}
+void AudioFXAudioProcessor::updatePeak(const ChainSettings& settings)
+{
+    auto peakCoefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(getSampleRate(), settings.PeakFreq, settings.PeakQuality, juce::Decibels::decibelsToGain(settings.PeakGain));
+
+    *leftChain.get<chainPosition::Peak>().coefficients = *peakCoefficients;
+    *rightChain.get<chainPosition::Peak>().coefficients = *peakCoefficients;
+
+}
+void AudioFXAudioProcessor::updateReverb(const ChainSettings& settings)
+{
+    juce::Reverb::Parameters param;
+    param.damping = settings.RoomSize;
+    param.roomSize = settings.RoomSize;
+    param.freezeMode = false;
+    param.width = settings.Width;
+    param.wetLevel = settings.Wet;
+    param.dryLevel = settings.Dry;
+
+    leftChain.get<chainPosition::Reverberation>().setParameters(param);
+    rightChain.get<chainPosition::Reverberation>().setParameters(param);
+
+}
+
+
+
