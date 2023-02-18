@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="WdstY3" name="AudioFX" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1">
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" companyName="BEI078">
   <MAINGROUP id="B5Spdv" name="AudioFX">
     <GROUP id="{7402122E-2DC6-D9D7-F9D6-D5401C4E1B02}" name="Source">
       <FILE id="xQp6IS" name="PluginProcessor.cpp" compile="1" resource="0"
