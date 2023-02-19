@@ -10,8 +10,10 @@
 
 #include <JuceHeader.h>
 
+//==============================================================================
+/**
+*/
 
-//Struct to make it easier for function call with parameter values
 struct ChainSettings
 {
     float Gain, HighCutoff, LowCutoff, PeakFreq, PeakQuality, PeakGain, RoomSize, Width, Dry, Wet;
@@ -20,9 +22,6 @@ struct ChainSettings
 ChainSettings getChainSettings(juce::AudioProcessorValueTreeState& apvts);
 
 
-//==============================================================================
-/**
-*/
 class AudioFXAudioProcessor  : public juce::AudioProcessor
                             #if JucePlugin_Enable_ARA
                              , public juce::AudioProcessorARAExtension
@@ -66,36 +65,31 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     /// createParameterLayout() is the fucntion that returns parameterlayout object for this Project
-    juce::AudioProcessorValueTreeState apvts{ *this, nullptr, "Parameters", createParameterLayout()};
+    juce::AudioProcessorValueTreeState apvts{ *this, nullptr, "Parameters", createParameterLayout() };
     //apvts is the object for valuetreestate
-
 private:
 
     using Filter = juce::dsp::IIR::Filter<float>;
     using Reverb = juce::dsp::Reverb;
-   /* using Waveshaper = juce::dsp::WaveShaper<float, std::function<float(float)>>*/;
+    using Waveshaper = juce::dsp::WaveShaper<float, std::function<float(float)>>;
 
-    //This is the Process Chain for our Project
-    using MonoChain = juce::dsp::ProcessorChain<Filter, Filter, Filter, Reverb>;
-    
+    using MonoChain = juce::dsp::ProcessorChain < Waveshaper, Filter, Filter, Filter, Reverb >;
+
     MonoChain leftChain, rightChain;
 
-    //Enum for tracking the chainposition more easily
     enum chainPosition
     {
-        LowCut, Peak, HighCut, Reverberation
+        WaveShape, LowCut, Peak, HighCut, Reverberation
     };
 
     //Function Declarations
     void updateDistortion(const ChainSettings& settings);
     void updateLowCut(const ChainSettings& settings);
-    void updateHighCut(const ChainSettings& settings);
     void updatePeak(const ChainSettings& settings);
+    void updateHighCut(const ChainSettings& settings);
     void updateReverb(const ChainSettings& settings);
-
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AudioFXAudioProcessor)
 };
